@@ -1,11 +1,11 @@
 import { Suspense, useRef, useState, useEffect } from 'react';
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
-import { OrbitControls, Center, Environment, Grid } from '@react-three/drei';
+import { OrbitControls, Center, Grid } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import * as THREE from 'three';
-import { Loader2, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Loader2, RotateCcw } from 'lucide-react';
 
 interface ThreeViewerProps {
   fileUrl: string;

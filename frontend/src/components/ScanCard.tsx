@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FileBox, Calendar, HardDrive, Tag } from 'lucide-react';
+import { FileBox, Calendar, HardDrive } from 'lucide-react';
 import { Scan } from '../api/client';
 
 interface ScanCardProps {
