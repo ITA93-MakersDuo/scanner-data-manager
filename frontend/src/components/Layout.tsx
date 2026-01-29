@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Scan, Upload, FolderOpen, Tag, Menu, X } from 'lucide-react';
+import { Scan, Upload, FolderOpen, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 interface LayoutProps {
