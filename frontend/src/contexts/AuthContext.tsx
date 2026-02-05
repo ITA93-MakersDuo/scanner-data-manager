@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface User {
   id: number;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.error || 'ログインに失敗しました');
     }
     const data = await res.json();
+    queryClient.clear();
     setUser(data.user);
     setToken(data.token);
     localStorage.setItem('token', data.token);
@@ -78,12 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.error || '登録に失敗しました');
     }
     const data = await res.json();
+    queryClient.clear();
     setUser(data.user);
     setToken(data.token);
     localStorage.setItem('token', data.token);
   };
 
   const logout = () => {
+    queryClient.clear();
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
