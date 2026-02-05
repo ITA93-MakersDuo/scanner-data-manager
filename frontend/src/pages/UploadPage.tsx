@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { useForm } from 'react-hook-form';
-import { Upload, FileBox, X, Loader2, CheckCircle } from 'lucide-react';
+import { Upload, FileBox, X, Loader2, CheckCircle, Image } from 'lucide-react';
 import { useCreateScan } from '../hooks/useScans';
 import { useProjects } from '../hooks/useProjects';
 import { useTags } from '../hooks/useTags';
+import { generateThumbnail } from '../utils/generateThumbnail';
 
 interface FormData {
   object_name: string;
@@ -23,6 +24,9 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [thumbnailBlob, setThumbnailBlob] = useState<Blob | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [generatingThumb, setGeneratingThumb] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
   const createScan = useCreateScan();
@@ -35,6 +39,37 @@ export default function UploadPage() {
     }
   }, []);
 
+  // Generate thumbnail when file is selected
+  useEffect(() => {
+    if (!file) {
+      setThumbnailBlob(null);
+      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
+      setThumbnailUrl(null);
+      return;
+    }
+
+    const ext = file.name.split('.').pop()?.toUpperCase() || '';
+    if (!['STL', 'PLY', 'OBJ'].includes(ext)) {
+      setThumbnailBlob(null);
+      setThumbnailUrl(null);
+      return;
+    }
+
+    setGeneratingThumb(true);
+    generateThumbnail(file, ext).then((blob) => {
+      setThumbnailBlob(blob);
+      if (blob) {
+        setThumbnailUrl(URL.createObjectURL(blob));
+      }
+      setGeneratingThumb(false);
+    });
+
+    return () => {
+      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -45,13 +80,13 @@ export default function UploadPage() {
       'model/obj': ['.obj'],
     },
     maxFiles: 1,
-    maxSize: 500 * 1024 * 1024, // 500MB
+    maxSize: 500 * 1024 * 1024,
   });
 
   const onSubmit = async (data: FormData) => {
     if (!file) return;
 
-    const formData = new FormData();
+    const formData = new globalThis.FormData();
     formData.append('file', file);
     formData.append('object_name', data.object_name || file.name.replace(/\.[^/.]+$/, ''));
     if (data.scan_date) formData.append('scan_date', data.scan_date);
@@ -62,6 +97,11 @@ export default function UploadPage() {
     if (data.project_id) formData.append('project_id', data.project_id);
     if (data.created_by) formData.append('created_by', data.created_by);
     if (selectedTags.length > 0) formData.append('tags', JSON.stringify(selectedTags));
+
+    // Attach thumbnail
+    if (thumbnailBlob) {
+      formData.append('thumbnail', thumbnailBlob, 'thumbnail.png');
+    }
 
     try {
       const result = await createScan.mutateAsync(formData);
@@ -139,6 +179,26 @@ export default function UploadPage() {
             </>
           )}
         </div>
+
+        {/* Thumbnail preview */}
+        {file && (
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center space-x-2 mb-2">
+              <Image size={16} className="text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">サムネイルプレビュー</span>
+            </div>
+            {generatingThumb ? (
+              <div className="flex items-center space-x-2 text-gray-500">
+                <Loader2 size={16} className="animate-spin" />
+                <span className="text-sm">サムネイル生成中...</span>
+              </div>
+            ) : thumbnailUrl ? (
+              <img src={thumbnailUrl} alt="サムネイル" className="w-32 h-32 rounded border object-cover" />
+            ) : (
+              <p className="text-sm text-gray-400">この形式はサムネイル自動生成に対応していません</p>
+            )}
+          </div>
+        )}
 
         {/* Form fields */}
         <div className="bg-white rounded-lg shadow p-6 space-y-4">

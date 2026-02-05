@@ -22,24 +22,22 @@ const upload = multer({
   limits: {
     fileSize: 500 * 1024 * 1024, // 500MB max file size
   },
-  fileFilter: (req, file, cb) => {
-    const allowedExtensions = ['.stl', '.ply', '.step', '.stp', '.iges', '.igs', '.obj'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedExtensions.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid file type. Allowed types: ${allowedExtensions.join(', ')}`));
-    }
-  },
 });
+
+const uploadFields = upload.fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 },
+]);
 
 // Routes
 router.get('/', scanController.getAll);
-router.get('/search', scanController.getAll); // Uses same logic with query params
+router.get('/search', scanController.getAll);
 router.get('/:id', scanController.getById);
 router.get('/:id/download', scanController.download);
 router.get('/:id/file-url', scanController.getFileUrl);
-router.post('/', upload.single('file'), scanController.create);
+router.get('/:id/file', scanController.serveFile);
+router.get('/:id/thumbnail', scanController.serveThumbnail);
+router.post('/', uploadFields, scanController.create);
 router.put('/:id', scanController.update);
 router.delete('/:id', scanController.delete);
 router.post('/:id/versions', upload.single('file'), scanController.uploadNewVersion);

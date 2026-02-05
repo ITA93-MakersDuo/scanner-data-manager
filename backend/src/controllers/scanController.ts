@@ -5,6 +5,16 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
+const CONTENT_TYPES: Record<string, string> = {
+  stl: 'model/stl',
+  ply: 'application/x-ply',
+  obj: 'text/plain',
+  step: 'model/step',
+  stp: 'model/step',
+  iges: 'model/iges',
+  igs: 'model/iges',
+};
+
 export const scanController = {
   async getAll(req: Request, res: Response) {
     try {
@@ -56,29 +66,40 @@ export const scanController = {
 
   async create(req: Request, res: Response) {
     try {
-      if (!req.file) {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const mainFile = files?.file?.[0];
+
+      if (!mainFile) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const fileExt = path.extname(req.file.originalname).toLowerCase().slice(1);
+      const fileExt = path.extname(mainFile.originalname).toLowerCase().slice(1);
       const allowedFormats = ['stl', 'ply', 'step', 'stp', 'iges', 'igs', 'obj'];
 
       if (!allowedFormats.includes(fileExt)) {
-        fs.unlinkSync(req.file.path);
+        fs.unlinkSync(mainFile.path);
         return res.status(400).json({ error: `Invalid file format. Allowed: ${allowedFormats.join(', ')}` });
       }
 
-      // Upload to Supabase Storage
+      // Upload 3D file to Supabase Storage
       const storagePath = `${uuidv4()}.${fileExt}`;
-      const fileBuffer = fs.readFileSync(req.file.path);
-      await uploadFile(storagePath, fileBuffer, req.file.mimetype || 'application/octet-stream');
+      const fileBuffer = fs.readFileSync(mainFile.path);
+      await uploadFile(storagePath, fileBuffer, mainFile.mimetype || 'application/octet-stream');
+      fs.unlinkSync(mainFile.path);
 
-      // Remove temp file
-      fs.unlinkSync(req.file.path);
+      // Upload thumbnail if provided
+      let thumbnailPath: string | null = null;
+      const thumbFile = files?.thumbnail?.[0];
+      if (thumbFile) {
+        thumbnailPath = `thumbs/${uuidv4()}.png`;
+        const thumbBuffer = fs.readFileSync(thumbFile.path);
+        await uploadFile(thumbnailPath, thumbBuffer, 'image/png');
+        fs.unlinkSync(thumbFile.path);
+      }
 
       const scanData = {
-        filename: req.file.originalname,
-        object_name: req.body.object_name || req.file.originalname.replace(/\.[^/.]+$/, ''),
+        filename: mainFile.originalname,
+        object_name: req.body.object_name || mainFile.originalname.replace(/\.[^/.]+$/, ''),
         scan_date: req.body.scan_date || null,
         notes: req.body.notes || null,
         scanner_model: req.body.scanner_model || null,
@@ -86,8 +107,8 @@ export const scanController = {
         accuracy: req.body.accuracy || null,
         file_path: storagePath,
         file_format: fileExt.toUpperCase(),
-        file_size: req.file.size,
-        thumbnail_path: null,
+        file_size: mainFile.size,
+        thumbnail_path: thumbnailPath,
         current_version: 1,
         project_id: req.body.project_id ? parseInt(req.body.project_id, 10) : null,
         created_by: req.body.created_by || null,
@@ -101,7 +122,7 @@ export const scanController = {
         scan_id: scan!.id!,
         version_number: 1,
         file_path: storagePath,
-        file_size: req.file.size,
+        file_size: mainFile.size,
         change_notes: 'Initial upload',
       });
 
@@ -117,9 +138,10 @@ export const scanController = {
       res.status(201).json(createdScan);
     } catch (error) {
       console.error('Error creating scan:', error);
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
+      // Cleanup temp files
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      if (files?.file?.[0] && fs.existsSync(files.file[0].path)) fs.unlinkSync(files.file[0].path);
+      if (files?.thumbnail?.[0] && fs.existsSync(files.thumbnail[0].path)) fs.unlinkSync(files.thumbnail[0].path);
       res.status(500).json({ error: 'Failed to create scan' });
     }
   },
@@ -161,6 +183,11 @@ export const scanController = {
 
       // Delete file from Supabase Storage
       await deleteFile(scan.file_path);
+
+      // Delete thumbnail
+      if (scan.thumbnail_path) {
+        await deleteFile(scan.thumbnail_path);
+      }
 
       // Delete version files
       const versions = await ScanVersionModel.findByScanId(id);
@@ -216,6 +243,64 @@ export const scanController = {
         fs.unlinkSync(req.file.path);
       }
       res.status(500).json({ error: 'Failed to upload new version' });
+    }
+  },
+
+  // Proxy endpoint: serve file through backend to avoid CORS
+  async serveFile(req: Request, res: Response) {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const scan = await ScanModel.findById(id);
+
+      if (!scan) {
+        return res.status(404).json({ error: 'Scan not found' });
+      }
+
+      const publicUrl = getPublicUrl(scan.file_path);
+      const response = await fetch(publicUrl);
+
+      if (!response.ok) {
+        return res.status(502).json({ error: 'Failed to fetch file from storage' });
+      }
+
+      const ext = scan.file_format.toLowerCase();
+      const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error('Error serving file:', error);
+      res.status(500).json({ error: 'Failed to serve file' });
+    }
+  },
+
+  // Proxy endpoint: serve thumbnail through backend
+  async serveThumbnail(req: Request, res: Response) {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const scan = await ScanModel.findById(id);
+
+      if (!scan || !scan.thumbnail_path) {
+        return res.status(404).json({ error: 'Thumbnail not found' });
+      }
+
+      const publicUrl = getPublicUrl(scan.thumbnail_path);
+      const response = await fetch(publicUrl);
+
+      if (!response.ok) {
+        return res.status(404).json({ error: 'Thumbnail not found in storage' });
+      }
+
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error('Error serving thumbnail:', error);
+      res.status(500).json({ error: 'Failed to serve thumbnail' });
     }
   },
 

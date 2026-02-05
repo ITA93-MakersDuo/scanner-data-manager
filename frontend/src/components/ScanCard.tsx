@@ -18,34 +18,47 @@ function formatDate(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString('ja-JP');
 }
 
-const formatColors: Record<string, { bg: string; text: string; accent: string }> = {
-  STL: { bg: 'bg-blue-100', text: 'text-blue-700', accent: 'text-blue-400' },
-  PLY: { bg: 'bg-green-100', text: 'text-green-700', accent: 'text-green-400' },
-  OBJ: { bg: 'bg-purple-100', text: 'text-purple-700', accent: 'text-purple-400' },
-  STEP: { bg: 'bg-orange-100', text: 'text-orange-700', accent: 'text-orange-400' },
-  STP: { bg: 'bg-orange-100', text: 'text-orange-700', accent: 'text-orange-400' },
-  IGES: { bg: 'bg-red-100', text: 'text-red-700', accent: 'text-red-400' },
-  IGS: { bg: 'bg-red-100', text: 'text-red-700', accent: 'text-red-400' },
+const formatColors: Record<string, { bg: string; text: string }> = {
+  STL: { bg: 'bg-blue-100', text: 'text-blue-700' },
+  PLY: { bg: 'bg-green-100', text: 'text-green-700' },
+  OBJ: { bg: 'bg-purple-100', text: 'text-purple-700' },
+  STEP: { bg: 'bg-orange-100', text: 'text-orange-700' },
+  STP: { bg: 'bg-orange-100', text: 'text-orange-700' },
+  IGES: { bg: 'bg-red-100', text: 'text-red-700' },
+  IGS: { bg: 'bg-red-100', text: 'text-red-700' },
 };
 
 export default function ScanCard({ scan }: ScanCardProps) {
-  const colors = formatColors[scan.file_format] || { bg: 'bg-gray-100', text: 'text-gray-700', accent: 'text-gray-400' };
+  const colors = formatColors[scan.file_format] || { bg: 'bg-gray-100', text: 'text-gray-700' };
+  const hasThumbnail = !!scan.thumbnail_path;
 
   return (
     <Link
       to={`/scans/${scan.id}`}
       className="scan-card block p-4 hover:scale-[1.02] transition-transform"
     >
-      {/* Thumbnail with format-based color */}
-      <div className={`${colors.bg} rounded-lg h-40 flex flex-col items-center justify-center mb-4 relative`}>
-        <Box size={48} className={colors.accent} />
-        <span className={`mt-2 text-lg font-bold ${colors.text}`}>
-          {scan.file_format}
-        </span>
-        {['STL', 'PLY', 'OBJ'].includes(scan.file_format) && (
-          <span className="absolute top-2 right-2 px-2 py-0.5 bg-white/80 rounded text-xs text-gray-600">
-            3Dプレビュー可
-          </span>
+      {/* Thumbnail */}
+      <div className={`rounded-lg h-40 flex items-center justify-center mb-4 overflow-hidden ${hasThumbnail ? 'bg-gray-100' : colors.bg}`}>
+        {hasThumbnail ? (
+          <img
+            src={`/api/v1/scans/${scan.id}/thumbnail`}
+            alt={scan.object_name}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              (e.target as HTMLImageElement).parentElement!.classList.add(colors.bg);
+              (e.target as HTMLImageElement).parentElement!.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full">
+                  <span class="text-4xl ${colors.text} font-bold">${scan.file_format}</span>
+                </div>
+              `;
+            }}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center">
+            <Box size={40} className={colors.text} style={{ opacity: 0.5 }} />
+            <span className={`mt-1 text-lg font-bold ${colors.text}`}>{scan.file_format}</span>
+          </div>
         )}
       </div>
 

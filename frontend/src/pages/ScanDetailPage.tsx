@@ -58,7 +58,8 @@ export default function ScanDetailPage() {
 
   useEffect(() => {
     if (scan?.id) {
-      api.scans.getFileUrl(scan.id).then(setFileUrl).catch(console.error);
+      // Use proxy endpoint to avoid CORS issues
+      setFileUrl(`/api/v1/scans/${scan.id}/file`);
     }
   }, [scan?.id]);
 
