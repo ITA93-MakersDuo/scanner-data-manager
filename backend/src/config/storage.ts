@@ -1,6 +1,6 @@
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
-const bucketName = process.env.SUPABASE_BUCKET || 'scans';
+const supabaseUrl = (process.env.SUPABASE_URL || '').trim();
+const supabaseKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '').trim().replace(/\s+/g, '');
+const bucketName = (process.env.SUPABASE_BUCKET || 'scans').trim();
 
 export const BUCKET_NAME = bucketName;
 
