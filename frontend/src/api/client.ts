@@ -1,5 +1,14 @@
 const API_BASE = '/api/v1';
 
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+function authJsonHeaders(): Record<string, string> {
+  return { ...authHeaders(), 'Content-Type': 'application/json' };
+}
+
 export interface Scan {
   id: number;
   filename: string;
@@ -77,18 +86,19 @@ export const api = {
       if (params?.project_id) searchParams.set('project_id', String(params.project_id));
       if (params?.search) searchParams.set('search', params.search);
 
-      const response = await fetch(`${API_BASE}/scans?${searchParams}`);
+      const response = await fetch(`${API_BASE}/scans?${searchParams}`, { headers: authHeaders() });
       return handleResponse<PaginatedResponse<Scan>>(response);
     },
 
     async getById(id: number) {
-      const response = await fetch(`${API_BASE}/scans/${id}`);
+      const response = await fetch(`${API_BASE}/scans/${id}`, { headers: authHeaders() });
       return handleResponse<Scan & { versions: ScanVersion[] }>(response);
     },
 
     async create(formData: FormData) {
       const response = await fetch(`${API_BASE}/scans`, {
         method: 'POST',
+        headers: authHeaders(),
         body: formData,
       });
       return handleResponse<Scan>(response);
@@ -97,7 +107,7 @@ export const api = {
     async update(id: number, data: Partial<Scan> & { tags?: number[] }) {
       const response = await fetch(`${API_BASE}/scans/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify(data),
       });
       return handleResponse<Scan>(response);
@@ -106,6 +116,7 @@ export const api = {
     async delete(id: number) {
       const response = await fetch(`${API_BASE}/scans/${id}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       });
       return handleResponse<void>(response);
     },
@@ -113,6 +124,7 @@ export const api = {
     async uploadNewVersion(id: number, formData: FormData) {
       const response = await fetch(`${API_BASE}/scans/${id}/versions`, {
         method: 'POST',
+        headers: authHeaders(),
         body: formData,
       });
       return handleResponse<Scan>(response);
@@ -123,7 +135,7 @@ export const api = {
     },
 
     async getFileUrl(id: number): Promise<string> {
-      const response = await fetch(`${API_BASE}/scans/${id}/file-url`);
+      const response = await fetch(`${API_BASE}/scans/${id}/file-url`, { headers: authHeaders() });
       const data = await response.json();
       return data.url;
     },
@@ -131,19 +143,19 @@ export const api = {
 
   projects: {
     async getAll() {
-      const response = await fetch(`${API_BASE}/projects`);
+      const response = await fetch(`${API_BASE}/projects`, { headers: authHeaders() });
       return handleResponse<Project[]>(response);
     },
 
     async getById(id: number) {
-      const response = await fetch(`${API_BASE}/projects/${id}`);
+      const response = await fetch(`${API_BASE}/projects/${id}`, { headers: authHeaders() });
       return handleResponse<Project>(response);
     },
 
     async create(data: { name: string; description?: string }) {
       const response = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify(data),
       });
       return handleResponse<Project>(response);
@@ -152,7 +164,7 @@ export const api = {
     async update(id: number, data: Partial<Project>) {
       const response = await fetch(`${API_BASE}/projects/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify(data),
       });
       return handleResponse<Project>(response);
@@ -161,6 +173,7 @@ export const api = {
     async delete(id: number) {
       const response = await fetch(`${API_BASE}/projects/${id}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       });
       return handleResponse<void>(response);
     },
@@ -168,14 +181,14 @@ export const api = {
 
   tags: {
     async getAll() {
-      const response = await fetch(`${API_BASE}/tags`);
+      const response = await fetch(`${API_BASE}/tags`, { headers: authHeaders() });
       return handleResponse<Tag[]>(response);
     },
 
     async create(data: { name: string; color?: string }) {
       const response = await fetch(`${API_BASE}/tags`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify(data),
       });
       return handleResponse<Tag>(response);
@@ -184,7 +197,7 @@ export const api = {
     async update(id: number, data: Partial<Tag>) {
       const response = await fetch(`${API_BASE}/tags/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authJsonHeaders(),
         body: JSON.stringify(data),
       });
       return handleResponse<Tag>(response);
@@ -193,6 +206,7 @@ export const api = {
     async delete(id: number) {
       const response = await fetch(`${API_BASE}/tags/${id}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       });
       return handleResponse<void>(response);
     },

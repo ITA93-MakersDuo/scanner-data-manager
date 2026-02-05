@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Loader2, FileBox } from 'lucide-react';
-import { useScans } from '../hooks/useScans';
+import { useScans, useDeleteScan } from '../hooks/useScans';
 import ScanCard from '../components/ScanCard';
 import FilterPanel from '../components/FilterPanel';
 
@@ -10,6 +10,7 @@ export default function ScanListPage() {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [page, setPage] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const limit = 20;
 
   const { data, isLoading, error } = useScans({
@@ -19,7 +20,8 @@ export default function ScanListPage() {
     offset: page * limit,
   });
 
-  // Filter by tags on client side (since API doesn't support tag filtering yet)
+  const deleteScan = useDeleteScan();
+
   const filteredScans = useMemo(() => {
     if (!data?.data) return [];
     if (selectedTags.length === 0) return data.data;
@@ -30,6 +32,16 @@ export default function ScanListPage() {
   }, [data?.data, selectedTags]);
 
   const totalPages = data ? Math.ceil(data.pagination.total / limit) : 0;
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteScan.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error('Delete failed:', error);
+    }
+  };
 
   if (error) {
     return (
@@ -89,7 +101,11 @@ export default function ScanListPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredScans.map((scan) => (
-              <ScanCard key={scan.id} scan={scan} />
+              <ScanCard
+                key={scan.id}
+                scan={scan}
+                onDelete={(id, name) => setDeleteTarget({ id, name })}
+              />
             ))}
           </div>
 
@@ -116,6 +132,33 @@ export default function ScanListPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-2">スキャンを削除しますか？</h3>
+            <p className="text-gray-600 mb-4">
+              「{deleteTarget.name}」を削除します。この操作は取り消せません。
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="btn-secondary"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteScan.isPending}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              >
+                {deleteScan.isPending ? '削除中...' : '削除'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

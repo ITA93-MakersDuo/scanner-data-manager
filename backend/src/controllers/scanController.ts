@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ScanModel, ScanSchema, ScanUpdateSchema, ScanVersionModel } from '../models';
 import { uploadFile, getPublicUrl, deleteFile } from '../config/storage';
+import { AuthRequest } from '../middleware/auth';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,6 +19,8 @@ const CONTENT_TYPES: Record<string, string> = {
 export const scanController = {
   async getAll(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
       const { limit = '50', offset = '0', project_id, search } = req.query;
 
       const scans = await ScanModel.findAll({
@@ -25,11 +28,13 @@ export const scanController = {
         offset: parseInt(offset as string, 10),
         project_id: project_id ? parseInt(project_id as string, 10) : undefined,
         search: search as string | undefined,
+        user_id: userId,
       });
 
       const total = await ScanModel.count({
         project_id: project_id ? parseInt(project_id as string, 10) : undefined,
         search: search as string | undefined,
+        user_id: userId,
       });
 
       res.json({
@@ -48,15 +53,16 @@ export const scanController = {
 
   async getById(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
       const id = parseInt(req.params.id, 10);
       const scan = await ScanModel.findById(id);
 
-      if (!scan) {
+      if (!scan || scan.user_id !== userId) {
         return res.status(404).json({ error: 'Scan not found' });
       }
 
       const versions = await ScanVersionModel.findByScanId(id);
-
       res.json({ ...scan, versions });
     } catch (error) {
       console.error('Error fetching scan:', error);
@@ -66,6 +72,9 @@ export const scanController = {
 
   async create(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
+      const userName = authReq.user!.name;
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
       const mainFile = files?.file?.[0];
 
@@ -81,7 +90,16 @@ export const scanController = {
         return res.status(400).json({ error: `Invalid file format. Allowed: ${allowedFormats.join(', ')}` });
       }
 
-      // Upload 3D file to Supabase Storage
+      // Check for duplicate object_name
+      const objectName = req.body.object_name || mainFile.originalname.replace(/\.[^/.]+$/, '');
+      const isDuplicate = await ScanModel.findByNameAndUser(objectName, userId);
+      if (isDuplicate) {
+        fs.unlinkSync(mainFile.path);
+        if (files?.thumbnail?.[0]) fs.unlinkSync(files.thumbnail[0].path);
+        return res.status(409).json({ error: `同じ名称「${objectName}」のスキャンが既に存在します` });
+      }
+
+      // Upload 3D file
       const storagePath = `${uuidv4()}.${fileExt}`;
       const fileBuffer = fs.readFileSync(mainFile.path);
       await uploadFile(storagePath, fileBuffer, mainFile.mimetype || 'application/octet-stream');
@@ -99,7 +117,7 @@ export const scanController = {
 
       const scanData = {
         filename: mainFile.originalname,
-        object_name: req.body.object_name || mainFile.originalname.replace(/\.[^/.]+$/, ''),
+        object_name: objectName,
         scan_date: req.body.scan_date || null,
         notes: req.body.notes || null,
         scanner_model: req.body.scanner_model || null,
@@ -111,13 +129,13 @@ export const scanController = {
         thumbnail_path: thumbnailPath,
         current_version: 1,
         project_id: req.body.project_id ? parseInt(req.body.project_id, 10) : null,
-        created_by: req.body.created_by || null,
+        created_by: userName,
+        user_id: userId,
       };
 
       const validatedData = ScanSchema.omit({ id: true }).parse(scanData);
       const scan = await ScanModel.create(validatedData);
 
-      // Create initial version record
       await ScanVersionModel.create({
         scan_id: scan!.id!,
         version_number: 1,
@@ -126,7 +144,6 @@ export const scanController = {
         change_notes: 'Initial upload',
       });
 
-      // Handle tags if provided
       if (req.body.tags) {
         const tagIds = JSON.parse(req.body.tags);
         if (Array.isArray(tagIds)) {
@@ -138,7 +155,6 @@ export const scanController = {
       res.status(201).json(createdScan);
     } catch (error) {
       console.error('Error creating scan:', error);
-      // Cleanup temp files
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
       if (files?.file?.[0] && fs.existsSync(files.file[0].path)) fs.unlinkSync(files.file[0].path);
       if (files?.thumbnail?.[0] && fs.existsSync(files.thumbnail[0].path)) fs.unlinkSync(files.thumbnail[0].path);
@@ -148,17 +164,18 @@ export const scanController = {
 
   async update(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
       const id = parseInt(req.params.id, 10);
       const existingScan = await ScanModel.findById(id);
 
-      if (!existingScan) {
+      if (!existingScan || existingScan.user_id !== userId) {
         return res.status(404).json({ error: 'Scan not found' });
       }
 
       const updateData = ScanUpdateSchema.parse(req.body);
       await ScanModel.update(id, updateData);
 
-      // Handle tags if provided
       if (req.body.tags !== undefined) {
         const tagIds = Array.isArray(req.body.tags) ? req.body.tags : JSON.parse(req.body.tags);
         await ScanModel.setTags(id, tagIds);
@@ -174,22 +191,18 @@ export const scanController = {
 
   async delete(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
       const id = parseInt(req.params.id, 10);
       const scan = await ScanModel.findById(id);
 
-      if (!scan) {
+      if (!scan || scan.user_id !== userId) {
         return res.status(404).json({ error: 'Scan not found' });
       }
 
-      // Delete file from Supabase Storage
       await deleteFile(scan.file_path);
+      if (scan.thumbnail_path) await deleteFile(scan.thumbnail_path);
 
-      // Delete thumbnail
-      if (scan.thumbnail_path) {
-        await deleteFile(scan.thumbnail_path);
-      }
-
-      // Delete version files
       const versions = await ScanVersionModel.findByScanId(id);
       for (const version of versions) {
         await deleteFile(version.file_path);
@@ -205,10 +218,12 @@ export const scanController = {
 
   async uploadNewVersion(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
       const id = parseInt(req.params.id, 10);
       const existingScan = await ScanModel.findById(id);
 
-      if (!existingScan) {
+      if (!existingScan || existingScan.user_id !== userId) {
         return res.status(404).json({ error: 'Scan not found' });
       }
 
@@ -239,35 +254,24 @@ export const scanController = {
       res.json(updatedScan);
     } catch (error) {
       console.error('Error uploading new version:', error);
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       res.status(500).json({ error: 'Failed to upload new version' });
     }
   },
 
-  // Proxy endpoint: serve file through backend to avoid CORS
   async serveFile(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
       const scan = await ScanModel.findById(id);
-
-      if (!scan) {
-        return res.status(404).json({ error: 'Scan not found' });
-      }
+      if (!scan) return res.status(404).json({ error: 'Scan not found' });
 
       const publicUrl = getPublicUrl(scan.file_path);
       const response = await fetch(publicUrl);
-
-      if (!response.ok) {
-        return res.status(502).json({ error: 'Failed to fetch file from storage' });
-      }
+      if (!response.ok) return res.status(502).json({ error: 'Failed to fetch file' });
 
       const ext = scan.file_format.toLowerCase();
-      const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
-      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Type', CONTENT_TYPES[ext] || 'application/octet-stream');
       res.setHeader('Access-Control-Allow-Origin', '*');
-
       const buffer = await response.arrayBuffer();
       res.send(Buffer.from(buffer));
     } catch (error) {
@@ -276,26 +280,18 @@ export const scanController = {
     }
   },
 
-  // Proxy endpoint: serve thumbnail through backend
   async serveThumbnail(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
       const scan = await ScanModel.findById(id);
-
-      if (!scan || !scan.thumbnail_path) {
-        return res.status(404).json({ error: 'Thumbnail not found' });
-      }
+      if (!scan || !scan.thumbnail_path) return res.status(404).json({ error: 'Thumbnail not found' });
 
       const publicUrl = getPublicUrl(scan.thumbnail_path);
       const response = await fetch(publicUrl);
-
-      if (!response.ok) {
-        return res.status(404).json({ error: 'Thumbnail not found in storage' });
-      }
+      if (!response.ok) return res.status(404).json({ error: 'Thumbnail not found' });
 
       res.setHeader('Content-Type', 'image/png');
       res.setHeader('Cache-Control', 'public, max-age=86400');
-
       const buffer = await response.arrayBuffer();
       res.send(Buffer.from(buffer));
     } catch (error) {
@@ -308,10 +304,7 @@ export const scanController = {
     try {
       const id = parseInt(req.params.id, 10);
       const scan = await ScanModel.findById(id);
-
-      if (!scan) {
-        return res.status(404).json({ error: 'Scan not found' });
-      }
+      if (!scan) return res.status(404).json({ error: 'Scan not found' });
 
       const publicUrl = getPublicUrl(scan.file_path);
       res.redirect(publicUrl);
@@ -325,10 +318,7 @@ export const scanController = {
     try {
       const id = parseInt(req.params.id, 10);
       const scan = await ScanModel.findById(id);
-
-      if (!scan) {
-        return res.status(404).json({ error: 'Scan not found' });
-      }
+      if (!scan) return res.status(404).json({ error: 'Scan not found' });
 
       const publicUrl = getPublicUrl(scan.file_path);
       res.json({ url: publicUrl });

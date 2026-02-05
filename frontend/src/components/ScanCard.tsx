@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Calendar, HardDrive, Box } from 'lucide-react';
+import { Calendar, HardDrive, Box, Trash2 } from 'lucide-react';
 import { Scan } from '../api/client';
 
 interface ScanCardProps {
   scan: Scan;
+  onDelete?: (id: number, name: string) => void;
 }
 
 function formatFileSize(bytes: number): string {
@@ -28,15 +29,30 @@ const formatColors: Record<string, { bg: string; text: string }> = {
   IGS: { bg: 'bg-red-100', text: 'text-red-700' },
 };
 
-export default function ScanCard({ scan }: ScanCardProps) {
+export default function ScanCard({ scan, onDelete }: ScanCardProps) {
   const colors = formatColors[scan.file_format] || { bg: 'bg-gray-100', text: 'text-gray-700' };
   const hasThumbnail = !!scan.thumbnail_path;
 
   return (
-    <Link
-      to={`/scans/${scan.id}`}
-      className="scan-card block p-4 hover:scale-[1.02] transition-transform"
-    >
+    <div className="scan-card relative hover:scale-[1.02] transition-transform">
+      {/* Delete button */}
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete(scan.id, scan.object_name);
+          }}
+          className="absolute top-2 right-2 z-10 p-1.5 bg-white rounded-full shadow-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          title="削除"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+      <Link
+        to={`/scans/${scan.id}`}
+        className="block p-4"
+      >
       {/* Thumbnail */}
       <div className={`rounded-lg h-40 flex items-center justify-center mb-4 overflow-hidden ${hasThumbnail ? 'bg-gray-100' : colors.bg}`}>
         {hasThumbnail ? (
@@ -111,6 +127,7 @@ export default function ScanCard({ scan }: ScanCardProps) {
           )}
         </div>
       )}
-    </Link>
+      </Link>
+    </div>
   );
 }

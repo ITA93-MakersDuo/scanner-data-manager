@@ -17,9 +17,10 @@ export const ScanSchema = z.object({
   current_version: z.number().default(1),
   project_id: z.number().nullable().optional(),
   created_by: z.string().nullable().optional(),
+  user_id: z.number().nullable().optional(),
 });
 
-export const ScanUpdateSchema = ScanSchema.partial().omit({ id: true, file_path: true, file_format: true, file_size: true });
+export const ScanUpdateSchema = ScanSchema.partial().omit({ id: true, file_path: true, file_format: true, file_size: true, user_id: true });
 
 export type Scan = z.infer<typeof ScanSchema>;
 export type ScanUpdate = z.infer<typeof ScanUpdateSchema>;
@@ -39,8 +40,8 @@ function transformScanRow(row: any): ScanWithTags {
 }
 
 export const ScanModel = {
-  async findAll(options: { limit?: number; offset?: number; project_id?: number; search?: string } = {}) {
-    const { limit = 50, offset = 0, project_id, search } = options;
+  async findAll(options: { limit?: number; offset?: number; project_id?: number; search?: string; user_id?: number } = {}) {
+    const { limit = 50, offset = 0, project_id, search, user_id } = options;
 
     const params: string[] = [
       'select=*,projects(name),scan_tags(tags(id,name,color))',
@@ -48,6 +49,10 @@ export const ScanModel = {
       `limit=${limit}`,
       `offset=${offset}`,
     ];
+
+    if (user_id) {
+      params.push(`user_id=eq.${user_id}`);
+    }
 
     if (project_id) {
       params.push(`project_id=eq.${project_id}`);
@@ -68,6 +73,11 @@ export const ScanModel = {
     return transformScanRow(rows[0]);
   },
 
+  async findByNameAndUser(objectName: string, userId: number): Promise<boolean> {
+    const rows = await restGet('scans', `select=id&object_name=eq.${encodeURIComponent(objectName)}&user_id=eq.${userId}&limit=1`);
+    return rows.length > 0;
+  },
+
   async create(data: Omit<Scan, 'id'>) {
     const row = await restInsert('scans', {
       filename: data.filename,
@@ -84,6 +94,7 @@ export const ScanModel = {
       current_version: data.current_version || 1,
       project_id: data.project_id || null,
       created_by: data.created_by || null,
+      user_id: data.user_id || null,
     });
     return this.findById(row.id);
   },
@@ -117,8 +128,12 @@ export const ScanModel = {
     return this.findById(scanId);
   },
 
-  async count(options: { project_id?: number; search?: string } = {}) {
+  async count(options: { project_id?: number; search?: string; user_id?: number } = {}) {
     const params: string[] = [];
+
+    if (options.user_id) {
+      params.push(`user_id=eq.${options.user_id}`);
+    }
 
     if (options.project_id) {
       params.push(`project_id=eq.${options.project_id}`);
