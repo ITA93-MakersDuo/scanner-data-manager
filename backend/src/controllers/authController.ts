@@ -30,9 +30,9 @@ export const authController = {
         token,
         user: { id: user.id, email: user.email, name: user.name },
       });
-    } catch (error) {
-      console.error('Registration error:', error);
-      res.status(500).json({ error: '登録に失敗しました' });
+    } catch (error: any) {
+      console.error('Registration error:', error?.message || error);
+      res.status(500).json({ error: `登録に失敗しました: ${error?.message || '不明なエラー'}` });
     }
   },
 
@@ -60,9 +60,9 @@ export const authController = {
         token,
         user: { id: user.id, email: user.email, name: user.name },
       });
-    } catch (error) {
-      console.error('Login error:', error);
-      res.status(500).json({ error: 'ログインに失敗しました' });
+    } catch (error: any) {
+      console.error('Login error:', error?.message || error);
+      res.status(500).json({ error: `ログインに失敗しました: ${error?.message || '不明なエラー'}` });
     }
   },
 
