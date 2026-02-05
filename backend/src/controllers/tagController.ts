@@ -4,7 +4,7 @@ import { TagModel, TagSchema } from '../models';
 export const tagController = {
   async getAll(req: Request, res: Response) {
     try {
-      const tags = TagModel.findAll();
+      const tags = await TagModel.findAll();
       res.json(tags);
     } catch (error) {
       console.error('Error fetching tags:', error);
@@ -15,7 +15,7 @@ export const tagController = {
   async getById(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
-      const tag = TagModel.findById(id);
+      const tag = await TagModel.findById(id);
 
       if (!tag) {
         return res.status(404).json({ error: 'Tag not found' });
@@ -32,13 +32,12 @@ export const tagController = {
     try {
       const validatedData = TagSchema.omit({ id: true }).parse(req.body);
 
-      // Check for duplicate name
-      const existing = TagModel.findByName(validatedData.name);
+      const existing = await TagModel.findByName(validatedData.name);
       if (existing) {
         return res.status(409).json({ error: 'Tag with this name already exists' });
       }
 
-      const tag = TagModel.create(validatedData);
+      const tag = await TagModel.create(validatedData);
       res.status(201).json(tag);
     } catch (error) {
       console.error('Error creating tag:', error);
@@ -49,7 +48,7 @@ export const tagController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
-      const existingTag = TagModel.findById(id);
+      const existingTag = await TagModel.findById(id);
 
       if (!existingTag) {
         return res.status(404).json({ error: 'Tag not found' });
@@ -57,15 +56,14 @@ export const tagController = {
 
       const validatedData = TagSchema.omit({ id: true }).partial().parse(req.body);
 
-      // Check for duplicate name if name is being changed
       if (validatedData.name && validatedData.name !== existingTag.name) {
-        const duplicate = TagModel.findByName(validatedData.name);
+        const duplicate = await TagModel.findByName(validatedData.name);
         if (duplicate) {
           return res.status(409).json({ error: 'Tag with this name already exists' });
         }
       }
 
-      const tag = TagModel.update(id, validatedData);
+      const tag = await TagModel.update(id, validatedData);
       res.json(tag);
     } catch (error) {
       console.error('Error updating tag:', error);
@@ -76,13 +74,13 @@ export const tagController = {
   async delete(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
-      const tag = TagModel.findById(id);
+      const tag = await TagModel.findById(id);
 
       if (!tag) {
         return res.status(404).json({ error: 'Tag not found' });
       }
 
-      TagModel.delete(id);
+      await TagModel.delete(id);
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting tag:', error);

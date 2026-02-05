@@ -4,7 +4,7 @@ import { ProjectModel, ProjectSchema } from '../models';
 export const projectController = {
   async getAll(req: Request, res: Response) {
     try {
-      const projects = ProjectModel.findAll();
+      const projects = await ProjectModel.findAll();
       res.json(projects);
     } catch (error) {
       console.error('Error fetching projects:', error);
@@ -15,7 +15,7 @@ export const projectController = {
   async getById(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
-      const project = ProjectModel.findById(id);
+      const project = await ProjectModel.findById(id);
 
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
@@ -32,13 +32,12 @@ export const projectController = {
     try {
       const validatedData = ProjectSchema.omit({ id: true }).parse(req.body);
 
-      // Check for duplicate name
-      const existing = ProjectModel.findByName(validatedData.name);
+      const existing = await ProjectModel.findByName(validatedData.name);
       if (existing) {
         return res.status(409).json({ error: 'Project with this name already exists' });
       }
 
-      const project = ProjectModel.create(validatedData);
+      const project = await ProjectModel.create(validatedData);
       res.status(201).json(project);
     } catch (error) {
       console.error('Error creating project:', error);
@@ -49,7 +48,7 @@ export const projectController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
-      const existingProject = ProjectModel.findById(id);
+      const existingProject = await ProjectModel.findById(id);
 
       if (!existingProject) {
         return res.status(404).json({ error: 'Project not found' });
@@ -57,15 +56,14 @@ export const projectController = {
 
       const validatedData = ProjectSchema.omit({ id: true }).partial().parse(req.body);
 
-      // Check for duplicate name if name is being changed
       if (validatedData.name && validatedData.name !== existingProject.name) {
-        const duplicate = ProjectModel.findByName(validatedData.name);
+        const duplicate = await ProjectModel.findByName(validatedData.name);
         if (duplicate) {
           return res.status(409).json({ error: 'Project with this name already exists' });
         }
       }
 
-      const project = ProjectModel.update(id, validatedData);
+      const project = await ProjectModel.update(id, validatedData);
       res.json(project);
     } catch (error) {
       console.error('Error updating project:', error);
@@ -76,13 +74,13 @@ export const projectController = {
   async delete(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id, 10);
-      const project = ProjectModel.findById(id);
+      const project = await ProjectModel.findById(id);
 
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      ProjectModel.delete(id);
+      await ProjectModel.delete(id);
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting project:', error);
