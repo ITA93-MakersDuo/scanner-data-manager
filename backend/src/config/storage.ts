@@ -1,27 +1,47 @@
-import { createClient } from '@supabase/supabase-js';
-
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
 const bucketName = process.env.SUPABASE_BUCKET || 'scans';
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
 export const BUCKET_NAME = bucketName;
 
 export async function uploadFile(filePath: string, fileBuffer: Buffer, contentType: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from(BUCKET_NAME)
-    .upload(filePath, fileBuffer, { contentType, upsert: true });
+  const url = `${supabaseUrl}/storage/v1/object/${bucketName}/${filePath}`;
 
-  if (error) throw new Error(`Upload failed: ${error.message}`);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': contentType,
+      'x-upsert': 'true',
+    },
+    body: fileBuffer,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Upload failed: ${errorText}`);
+  }
+
   return filePath;
 }
 
 export function getPublicUrl(filePath: string): string {
-  const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-  return data.publicUrl;
+  return `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
 }
 
 export async function deleteFile(filePath: string): Promise<void> {
-  const { error } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-  if (error) console.error(`Delete failed: ${error.message}`);
+  const url = `${supabaseUrl}/storage/v1/object/${bucketName}`;
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prefixes: [filePath] }),
+  });
+
+  if (!response.ok) {
+    console.error(`Delete failed: ${await response.text()}`);
+  }
 }
