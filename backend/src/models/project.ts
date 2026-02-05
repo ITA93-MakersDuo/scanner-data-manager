@@ -1,4 +1,4 @@
-import pool from '../config/database';
+import { restGet, restInsert, restUpdate, restDelete } from '../config/database';
 import { z } from 'zod';
 
 export const ProjectSchema = z.object({
@@ -11,58 +11,47 @@ export type Project = z.infer<typeof ProjectSchema>;
 
 export const ProjectModel = {
   async findAll() {
-    const { rows } = await pool.query(`
-      SELECT p.*, COUNT(s.id)::int as scan_count
-      FROM projects p
-      LEFT JOIN scans s ON p.id = s.project_id
-      GROUP BY p.id
-      ORDER BY p.name ASC
-    `);
-    return rows as (Project & { scan_count: number })[];
+    const rows = await restGet('projects', 'select=*,scans(count)&order=name.asc');
+    return rows.map((row: any) => {
+      const { scans, ...rest } = row;
+      return {
+        ...rest,
+        scan_count: scans?.[0]?.count || 0,
+      };
+    }) as (Project & { scan_count: number })[];
   },
 
   async findById(id: number): Promise<Project | null> {
-    const { rows } = await pool.query('SELECT * FROM projects WHERE id = $1', [id]);
+    const rows = await restGet('projects', `id=eq.${id}`);
     return rows[0] || null;
   },
 
   async findByName(name: string): Promise<Project | null> {
-    const { rows } = await pool.query('SELECT * FROM projects WHERE name = $1', [name]);
+    const rows = await restGet('projects', `name=eq.${encodeURIComponent(name)}`);
     return rows[0] || null;
   },
 
   async create(data: Omit<Project, 'id'>) {
-    const { rows } = await pool.query(
-      'INSERT INTO projects (name, description) VALUES ($1, $2) RETURNING *',
-      [data.name, data.description || null]
-    );
-    return rows[0] as Project;
+    return await restInsert('projects', {
+      name: data.name,
+      description: data.description || null,
+    }) as Project;
   },
 
   async update(id: number, data: Partial<Omit<Project, 'id'>>) {
-    const fields: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    const updateData: Record<string, any> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
 
-    if (data.name !== undefined) {
-      fields.push(`name = $${paramIndex++}`);
-      values.push(data.name);
-    }
-    if (data.description !== undefined) {
-      fields.push(`description = $${paramIndex++}`);
-      values.push(data.description);
-    }
+    if (Object.keys(updateData).length === 0) return this.findById(id);
 
-    if (fields.length === 0) return this.findById(id);
+    updateData.updated_at = new Date().toISOString();
 
-    fields.push('updated_at = NOW()');
-    values.push(id);
-
-    await pool.query(`UPDATE projects SET ${fields.join(', ')} WHERE id = $${paramIndex}`, values);
+    await restUpdate('projects', `id=eq.${id}`, updateData);
     return this.findById(id);
   },
 
   async delete(id: number) {
-    await pool.query('DELETE FROM projects WHERE id = $1', [id]);
+    await restDelete('projects', `id=eq.${id}`);
   },
 };
