@@ -82,7 +82,9 @@ export const scanController = {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const fileExt = path.extname(mainFile.originalname).toLowerCase().slice(1);
+      // Fix multer's latin1 encoding for Japanese/non-ASCII filenames
+      const originalFilename = Buffer.from(mainFile.originalname, 'latin1').toString('utf8');
+      const fileExt = path.extname(originalFilename).toLowerCase().slice(1);
       const allowedFormats = ['stl', 'ply', 'step', 'stp', 'iges', 'igs', 'obj'];
 
       if (!allowedFormats.includes(fileExt)) {
@@ -91,7 +93,7 @@ export const scanController = {
       }
 
       // Check for duplicate object_name
-      const objectName = req.body.object_name || mainFile.originalname.replace(/\.[^/.]+$/, '');
+      const objectName = req.body.object_name || originalFilename.replace(/\.[^/.]+$/, '');
       const isDuplicate = await ScanModel.findByNameAndUser(objectName, userId);
       if (isDuplicate) {
         fs.unlinkSync(mainFile.path);
@@ -116,7 +118,7 @@ export const scanController = {
       }
 
       const scanData = {
-        filename: mainFile.originalname,
+        filename: originalFilename,
         object_name: objectName,
         scan_date: req.body.scan_date || null,
         notes: req.body.notes || null,
@@ -307,7 +309,14 @@ export const scanController = {
       if (!scan) return res.status(404).json({ error: 'Scan not found' });
 
       const publicUrl = getPublicUrl(scan.file_path);
-      res.redirect(publicUrl);
+      const response = await fetch(publicUrl);
+      if (!response.ok) return res.status(502).json({ error: 'Failed to fetch file' });
+
+      const encodedFilename = encodeURIComponent(scan.filename || `scan_${id}`);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
     } catch (error) {
       console.error('Error downloading scan:', error);
       res.status(500).json({ error: 'Failed to download scan' });
