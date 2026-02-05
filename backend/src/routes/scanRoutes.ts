@@ -38,6 +38,7 @@ router.get('/', scanController.getAll);
 router.get('/search', scanController.getAll); // Uses same logic with query params
 router.get('/:id', scanController.getById);
 router.get('/:id/download', scanController.download);
+router.get('/:id/file-url', scanController.getFileUrl);
 router.post('/', upload.single('file'), scanController.create);
 router.put('/:id', scanController.update);
 router.delete('/:id', scanController.delete);

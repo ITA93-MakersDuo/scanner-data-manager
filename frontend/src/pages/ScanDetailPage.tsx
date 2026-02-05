@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, Download, Trash2, Edit2, Save, X, Calendar,
@@ -34,11 +34,19 @@ export default function ScanDetailPage() {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+
   const { data: scan, isLoading, error } = useScan(Number(id));
   const { data: projects } = useProjects();
   const { data: tags } = useTags();
   const updateScan = useUpdateScan();
   const deleteScan = useDeleteScan();
+
+  useEffect(() => {
+    if (scan?.id) {
+      api.scans.getFileUrl(scan.id).then(setFileUrl).catch(console.error);
+    }
+  }, [scan?.id]);
 
   const startEdit = () => {
     if (scan) {
@@ -158,11 +166,15 @@ export default function ScanDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 3D Viewer or placeholder */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          {canView3D ? (
+          {canView3D && fileUrl ? (
             <ThreeViewer
-              fileUrl={api.scans.getFileUrl(scan.file_path)}
+              fileUrl={fileUrl}
               fileFormat={scan.file_format}
             />
+          ) : canView3D && !fileUrl ? (
+            <div className="h-96 flex items-center justify-center bg-gray-100">
+              <Loader2 size={32} className="animate-spin text-indigo-600" />
+            </div>
           ) : (
             <div className="h-96 flex items-center justify-center bg-gray-100">
               <div className="text-center text-gray-500">

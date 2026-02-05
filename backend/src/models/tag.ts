@@ -1,4 +1,4 @@
-import db from '../config/database';
+import pool from '../config/database';
 import { z } from 'zod';
 
 export const TagSchema = z.object({
@@ -10,42 +10,46 @@ export const TagSchema = z.object({
 export type Tag = z.infer<typeof TagSchema>;
 
 export const TagModel = {
-  findAll() {
-    const tags = db.prepare(`
-      SELECT t.*, COUNT(st.scan_id) as usage_count
+  async findAll() {
+    const { rows } = await pool.query(`
+      SELECT t.*, COUNT(st.scan_id)::int as usage_count
       FROM tags t
       LEFT JOIN scan_tags st ON t.id = st.tag_id
       GROUP BY t.id
       ORDER BY t.name ASC
-    `).all() as (Tag & { usage_count: number })[];
-
-    return tags;
+    `);
+    return rows as (Tag & { usage_count: number })[];
   },
 
-  findById(id: number): Tag | null {
-    return db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as Tag | undefined || null;
+  async findById(id: number): Promise<Tag | null> {
+    const { rows } = await pool.query('SELECT * FROM tags WHERE id = $1', [id]);
+    return rows[0] || null;
   },
 
-  findByName(name: string): Tag | null {
-    return db.prepare('SELECT * FROM tags WHERE name = ?').get(name) as Tag | undefined || null;
+  async findByName(name: string): Promise<Tag | null> {
+    const { rows } = await pool.query('SELECT * FROM tags WHERE name = $1', [name]);
+    return rows[0] || null;
   },
 
-  create(data: Omit<Tag, 'id'>) {
-    const stmt = db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)');
-    const result = stmt.run(data.name, data.color || '#6366f1');
-    return this.findById(result.lastInsertRowid as number);
+  async create(data: Omit<Tag, 'id'>) {
+    const { rows } = await pool.query(
+      'INSERT INTO tags (name, color) VALUES ($1, $2) RETURNING *',
+      [data.name, data.color || '#6366f1']
+    );
+    return rows[0] as Tag;
   },
 
-  update(id: number, data: Partial<Omit<Tag, 'id'>>) {
+  async update(id: number, data: Partial<Omit<Tag, 'id'>>) {
     const fields: string[] = [];
     const values: any[] = [];
+    let paramIndex = 1;
 
     if (data.name !== undefined) {
-      fields.push('name = ?');
+      fields.push(`name = $${paramIndex++}`);
       values.push(data.name);
     }
     if (data.color !== undefined) {
-      fields.push('color = ?');
+      fields.push(`color = $${paramIndex++}`);
       values.push(data.color);
     }
 
@@ -53,23 +57,11 @@ export const TagModel = {
 
     values.push(id);
 
-    const stmt = db.prepare(`UPDATE tags SET ${fields.join(', ')} WHERE id = ?`);
-    stmt.run(...values);
-
+    await pool.query(`UPDATE tags SET ${fields.join(', ')} WHERE id = $${paramIndex}`, values);
     return this.findById(id);
   },
 
-  delete(id: number) {
-    const stmt = db.prepare('DELETE FROM tags WHERE id = ?');
-    return stmt.run(id);
-  },
-
-  findByScanId(scanId: number) {
-    return db.prepare(`
-      SELECT t.*
-      FROM tags t
-      JOIN scan_tags st ON t.id = st.tag_id
-      WHERE st.scan_id = ?
-    `).all(scanId) as Tag[];
+  async delete(id: number) {
+    await pool.query('DELETE FROM tags WHERE id = $1', [id]);
   },
 };

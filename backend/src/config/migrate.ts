@@ -1,26 +1,23 @@
-import db from './database';
+import pool from './database';
 
 const migrations = [
-  // Projects table
   `CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
   )`,
 
-  // Tags table
   `CREATE TABLE IF NOT EXISTS tags (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     color TEXT DEFAULT '#6366f1',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW()
   )`,
 
-  // Scans table
   `CREATE TABLE IF NOT EXISTS scans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     filename TEXT NOT NULL,
     object_name TEXT NOT NULL,
     scan_date DATE,
@@ -33,47 +30,40 @@ const migrations = [
     file_size INTEGER NOT NULL,
     thumbnail_path TEXT,
     current_version INTEGER DEFAULT 1,
-    project_id INTEGER,
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
     created_by TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
   )`,
 
-  // Scan-Tags relation (many-to-many)
   `CREATE TABLE IF NOT EXISTS scan_tags (
-    scan_id INTEGER NOT NULL,
-    tag_id INTEGER NOT NULL,
-    PRIMARY KEY (scan_id, tag_id),
-    FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
-    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+    scan_id INTEGER NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (scan_id, tag_id)
   )`,
 
-  // Scan versions table
   `CREATE TABLE IF NOT EXISTS scan_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    scan_id INTEGER NOT NULL,
+    id SERIAL PRIMARY KEY,
+    scan_id INTEGER NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
     file_path TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     change_notes TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT NOW()
   )`,
 
-  // Indexes for better query performance
   `CREATE INDEX IF NOT EXISTS idx_scans_project ON scans(project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_scans_scan_date ON scans(scan_date)`,
   `CREATE INDEX IF NOT EXISTS idx_scans_object_name ON scans(object_name)`,
   `CREATE INDEX IF NOT EXISTS idx_scan_versions_scan ON scan_versions(scan_id)`,
 ];
 
-function runMigrations() {
+async function runMigrations() {
   console.log('Running migrations...');
 
   for (const migration of migrations) {
     try {
-      db.exec(migration);
+      await pool.query(migration);
       console.log('✓ Migration executed successfully');
     } catch (error) {
       console.error('✗ Migration failed:', error);
@@ -82,6 +72,10 @@ function runMigrations() {
   }
 
   console.log('All migrations completed successfully!');
+  await pool.end();
 }
 
-runMigrations();
+runMigrations().catch((err) => {
+  console.error('Migration error:', err);
+  process.exit(1);
+});

@@ -1,11 +1,11 @@
-import { Suspense, useRef, useState, useEffect } from 'react';
+import { Suspense, useRef, useState, useEffect, useCallback } from 'react';
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import { OrbitControls, Center, Grid } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import * as THREE from 'three';
-import { Loader2, RotateCcw } from 'lucide-react';
+import { Loader2, RotateCcw, Maximize, Minimize } from 'lucide-react';
 
 interface ThreeViewerProps {
   fileUrl: string;
@@ -129,8 +129,8 @@ function SceneContent({ url, format }: { url: string; format: string }) {
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={1}
-        maxDistance={50}
+        minDistance={0}
+        maxDistance={Infinity}
       />
     </>
   );
@@ -173,15 +173,61 @@ function ErrorBoundary({ children }: { children: React.ReactNode }) {
 export default function ThreeViewer({ fileUrl, fileFormat }: ThreeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [key, setKey] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const resetView = () => {
     setKey((prev) => prev + 1);
   };
 
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(console.error);
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(console.error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // ESC key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        document.exitFullscreen().catch(console.error);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
   return (
-    <div ref={containerRef} className="relative h-96 bg-gray-100">
+    <div
+      ref={containerRef}
+      className={`relative bg-gray-100 ${isFullscreen ? 'h-screen' : 'h-96'}`}
+    >
       {/* Controls */}
       <div className="absolute top-4 right-4 z-10 flex space-x-2">
+        <button
+          onClick={toggleFullscreen}
+          className="p-2 bg-white rounded-lg shadow hover:bg-gray-100 transition-colors"
+          title={isFullscreen ? '全画面を解除' : '全画面表示'}
+        >
+          {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+        </button>
         <button
           onClick={resetView}
           className="p-2 bg-white rounded-lg shadow hover:bg-gray-100 transition-colors"
@@ -193,7 +239,7 @@ export default function ThreeViewer({ fileUrl, fileFormat }: ThreeViewerProps) {
 
       {/* Instructions */}
       <div className="absolute bottom-4 left-4 z-10 text-xs text-gray-500 bg-white/80 px-2 py-1 rounded">
-        ドラッグで回転 / スクロールでズーム / Shift+ドラッグで移動
+        ドラッグで回転 / スクロールでズーム（無制限） / Shift+ドラッグで移動
       </div>
 
       <ErrorBoundary>

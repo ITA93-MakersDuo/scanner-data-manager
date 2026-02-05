@@ -122,9 +122,10 @@ export const api = {
       return `${API_BASE}/scans/${id}/download`;
     },
 
-    getFileUrl(filePath: string) {
-      const filename = filePath.split(/[\\/]/).pop();
-      return `/uploads/${filename}`;
+    async getFileUrl(id: number): Promise<string> {
+      const response = await fetch(`${API_BASE}/scans/${id}/file-url`);
+      const data = await response.json();
+      return data.url;
     },
   },
 
