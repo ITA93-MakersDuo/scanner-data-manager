@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FileBox, Calendar, HardDrive } from 'lucide-react';
+import { Calendar, HardDrive, Box } from 'lucide-react';
 import { Scan } from '../api/client';
 
 interface ScanCardProps {
@@ -18,15 +18,35 @@ function formatDate(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString('ja-JP');
 }
 
+const formatColors: Record<string, { bg: string; text: string; accent: string }> = {
+  STL: { bg: 'bg-blue-100', text: 'text-blue-700', accent: 'text-blue-400' },
+  PLY: { bg: 'bg-green-100', text: 'text-green-700', accent: 'text-green-400' },
+  OBJ: { bg: 'bg-purple-100', text: 'text-purple-700', accent: 'text-purple-400' },
+  STEP: { bg: 'bg-orange-100', text: 'text-orange-700', accent: 'text-orange-400' },
+  STP: { bg: 'bg-orange-100', text: 'text-orange-700', accent: 'text-orange-400' },
+  IGES: { bg: 'bg-red-100', text: 'text-red-700', accent: 'text-red-400' },
+  IGS: { bg: 'bg-red-100', text: 'text-red-700', accent: 'text-red-400' },
+};
+
 export default function ScanCard({ scan }: ScanCardProps) {
+  const colors = formatColors[scan.file_format] || { bg: 'bg-gray-100', text: 'text-gray-700', accent: 'text-gray-400' };
+
   return (
     <Link
       to={`/scans/${scan.id}`}
       className="scan-card block p-4 hover:scale-[1.02] transition-transform"
     >
-      {/* Thumbnail placeholder */}
-      <div className="bg-gray-200 rounded-lg h-40 flex items-center justify-center mb-4">
-        <FileBox size={48} className="text-gray-400" />
+      {/* Thumbnail with format-based color */}
+      <div className={`${colors.bg} rounded-lg h-40 flex flex-col items-center justify-center mb-4 relative`}>
+        <Box size={48} className={colors.accent} />
+        <span className={`mt-2 text-lg font-bold ${colors.text}`}>
+          {scan.file_format}
+        </span>
+        {['STL', 'PLY', 'OBJ'].includes(scan.file_format) && (
+          <span className="absolute top-2 right-2 px-2 py-0.5 bg-white/80 rounded text-xs text-gray-600">
+            3Dプレビュー可
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -36,7 +56,7 @@ export default function ScanCard({ scan }: ScanCardProps) {
 
       <div className="space-y-1 text-sm text-gray-600">
         <div className="flex items-center space-x-2">
-          <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-medium">
+          <span className={`px-2 py-0.5 ${colors.bg} ${colors.text} rounded text-xs font-medium`}>
             {scan.file_format}
           </span>
           <span className="flex items-center">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, Download, Trash2, Edit2, Save, X, Calendar,
@@ -8,22 +8,36 @@ import { useScan, useUpdateScan, useDeleteScan } from '../hooks/useScans';
 import { useProjects } from '../hooks/useProjects';
 import { useTags } from '../hooks/useTags';
 import { api } from '../api/client';
-import ThreeViewer from '../components/ThreeViewer';
+import ErrorBoundary from '../components/ErrorBoundary';
 
-function formatFileSize(bytes: number): string {
+const ThreeViewer = lazy(() => import('../components/ThreeViewer'));
+
+function formatFileSize(bytes: number | undefined | null): string {
+  if (bytes == null || isNaN(bytes)) return '- B';
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString('ja-JP');
+  try {
+    return new Date(dateStr).toLocaleDateString('ja-JP');
+  } catch {
+    return '-';
+  }
 }
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('ja-JP');
+function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleString('ja-JP');
+  } catch {
+    return '-';
+  }
 }
 
 export default function ScanDetailPage() {
@@ -51,7 +65,7 @@ export default function ScanDetailPage() {
   const startEdit = () => {
     if (scan) {
       setEditData({
-        object_name: scan.object_name,
+        object_name: scan.object_name || '',
         scan_date: scan.scan_date || '',
         notes: scan.notes || '',
         scanner_model: scan.scanner_model || '',
@@ -106,12 +120,14 @@ export default function ScanDetailPage() {
   if (error || !scan) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-        スキャンデータが見つかりませんでした
+        <p>スキャンデータが見つかりませんでした</p>
+        {error && <p className="text-sm mt-1">{String(error)}</p>}
+        <Link to="/" className="inline-block mt-3 text-indigo-600 hover:underline">一覧に戻る</Link>
       </div>
     );
   }
 
-  const canView3D = ['STL', 'PLY', 'OBJ'].includes(scan.file_format);
+  const canView3D = ['STL', 'PLY', 'OBJ'].includes(scan.file_format || '');
 
   return (
     <div>
@@ -121,7 +137,7 @@ export default function ScanDetailPage() {
           <Link to="/" className="p-2 hover:bg-gray-200 rounded-lg transition-colors">
             <ArrowLeft size={24} />
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{scan.object_name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{scan.object_name || 'Untitled'}</h1>
         </div>
         <div className="flex items-center space-x-2">
           {isEditing ? (
@@ -167,10 +183,26 @@ export default function ScanDetailPage() {
         {/* 3D Viewer or placeholder */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {canView3D && fileUrl ? (
-            <ThreeViewer
-              fileUrl={fileUrl}
-              fileFormat={scan.file_format}
-            />
+            <ErrorBoundary
+              fallback={
+                <div className="h-96 flex items-center justify-center bg-gray-100">
+                  <div className="text-center text-gray-500">
+                    <p className="text-lg font-medium">3Dプレビューエラー</p>
+                    <p className="text-sm">モデルの表示中にエラーが発生しました</p>
+                  </div>
+                </div>
+              }
+            >
+              <Suspense
+                fallback={
+                  <div className="h-96 flex items-center justify-center bg-gray-100">
+                    <Loader2 size={32} className="animate-spin text-indigo-600" />
+                  </div>
+                }
+              >
+                <ThreeViewer fileUrl={fileUrl} fileFormat={scan.file_format} />
+              </Suspense>
+            </ErrorBoundary>
           ) : canView3D && !fileUrl ? (
             <div className="h-96 flex items-center justify-center bg-gray-100">
               <Loader2 size={32} className="animate-spin text-indigo-600" />
@@ -178,7 +210,7 @@ export default function ScanDetailPage() {
           ) : (
             <div className="h-96 flex items-center justify-center bg-gray-100">
               <div className="text-center text-gray-500">
-                <p className="text-lg font-medium">{scan.file_format} ファイル</p>
+                <p className="text-lg font-medium">{scan.file_format || '不明'} ファイル</p>
                 <p className="text-sm">このフォーマットは3Dプレビューに対応していません</p>
               </div>
             </div>
@@ -327,7 +359,7 @@ export default function ScanDetailPage() {
                     <span>ファイル:</span>
                   </div>
                   <div className="font-medium">
-                    {scan.filename} ({formatFileSize(scan.file_size)})
+                    {scan.filename || '-'} ({formatFileSize(scan.file_size)})
                   </div>
 
                   <div className="flex items-center space-x-2 text-gray-600">
@@ -335,7 +367,7 @@ export default function ScanDetailPage() {
                       形式
                     </span>
                   </div>
-                  <div className="font-medium">{scan.file_format}</div>
+                  <div className="font-medium">{scan.file_format || '-'}</div>
 
                   {scan.scan_date && (
                     <>
@@ -425,7 +457,7 @@ export default function ScanDetailPage() {
       </div>
 
       {/* Version history */}
-      {scan.versions && scan.versions.length > 0 && (
+      {scan.versions && Array.isArray(scan.versions) && scan.versions.length > 0 && (
         <div className="mt-6 bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">バージョン履歴</h2>
           <div className="space-y-2">
